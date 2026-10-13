@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pocket Snake</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=VT323&display=swap">
+<style>
+/* Layout: one handheld "device" centred on the page — LCD screen on top, readout + d-pad below. Single deliberate look (monochrome LCD), so no dark/light swap. */
+:root {
+  --page: #1d2420;
+  --shell: #2c3530;
+  --shell-edge: #46524b;
+  --lcd: #b7c69a;
+  --lcd-shade: #a3b386;
+  --pixel: #26301f;
+  --ink: #dfe6d6;
+  --muted: #8e9b8f;
+  --display: "Silkscreen", "Courier New", monospace;
+  --mono: "VT323", "Courier New", monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--mono);
+  display: grid;
+  place-items: center;
+  padding-inline: 16px;
+  padding-block: 20px;
+  box-sizing: border-box;
+}
+.device {
+  width: 100%;
+  max-width: 420px;
+  background: var(--shell);
+  border: 2px solid var(--shell-edge);
+  border-radius: 28px 28px 48px 48px;
+  padding: 22px 20px 26px;
+  box-sizing: border-box;
+  display: grid;
+  gap: 16px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.45);
+}
+.brand {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+}
+.screen {
+  background: var(--lcd);
+  border-radius: 6px;
+  padding: 10px;
+  box-shadow: inset 0 0 0 3px var(--lcd-shade), inset 0 4px 14px rgba(0,0,0,.25);
+  display: grid;
+  gap: 6px;
+  color: var(--pixel);
+}
+.hud {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--display);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 2px solid var(--pixel);
+  padding-bottom: 4px;
+}
+.stage { position: relative; }
+canvas {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1;
+  image-rendering: pixelated;
+}
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  gap: 6px;
+  background: rgba(183,198,154,.82);
+  font-family: var(--display);
+  color: var(--pixel);
+}
+.overlay[hidden] { display: none; }
+.overlay strong { font-size: 22px; letter-spacing: .06em; }
+.overlay span { font-family: var(--mono); font-size: 20px; }
+.controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+}
+.keys { font-size: 18px; color: var(--muted); line-height: 1.25; }
+.keys b { color: var(--ink); font-weight: 400; }
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3, 46px);
+  grid-template-rows: repeat(3, 46px);
+  gap: 4px;
+}
+.pad button {
+  background: var(--shell-edge);
+  color: var(--ink);
+  border: 0;
+  border-radius: 10px;
+  font-size: 18px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.pad button:active { background: var(--muted); color: var(--pixel); }
+.pad button:focus-visible, .act:focus-visible { outline: 2px solid var(--lcd); outline-offset: 2px; }
+.pad .up { grid-area: 1 / 2; } .pad .left { grid-area: 2 / 1; }
+.pad .right { grid-area: 2 / 3; } .pad .down { grid-area: 3 / 2; }
+.pad .mid { grid-area: 2 / 2; font-family: var(--display); font-size: 10px; }
+.act {
+  justify-self: start;
+  font-family: var(--display);
+  font-size: 12px;
+  letter-spacing: .1em;
+  background: transparent;
+  color: var(--ink);
+  border: 2px solid var(--shell-edge);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+
+<main class="device">
+  <h1 class="brand">Pocket Snake</h1>
+  <div class="screen">
+    <div class="hud"><span id="score">SCORE 0000</span><span id="best">HI 0000</span></div>
+    <div class="stage">
+      <canvas id="board" width="400" height="400"></canvas>
+      <div class="overlay" id="overlay">
+        <strong id="ovTitle">READY?</strong>
+        <span id="ovText">Press an arrow key or tap the pad</span>
+      </div>
+    </div>
+  </div>
+  <div class="controls">
+    <div class="keys">
+      <div><b>Arrows / WASD</b> steer</div>
+      <div><b>Space</b> pause</div>
+      <div>Swipe the screen on phones</div>
+      <button class="act" id="restart" type="button" style="margin-top:10px">NEW GAME</button>
+    </div>
+    <div class="pad" aria-label="Direction pad">
+      <button class="up" data-dir="up" aria-label="Up" type="button">▲</button>
+      <button class="left" data-dir="left" aria-label="Left" type="button">◀</button>
+      <button class="mid" id="pauseBtn" aria-label="Pause" type="button">II</button>
+      <button class="right" data-dir="right" aria-label="Right" type="button">▶</button>
+      <button class="down" data-dir="down" aria-label="Down" type="button">▼</button>
+    </div>
+  </div>
+</main>
+
+<script>
+(() => {
+  const N = 20, CELL = 20;
+  const cv = document.getElementById('board'), ctx = cv.getContext('2d');
+  const css = getComputedStyle(document.documentElement);
+  const PIXEL = css.getPropertyValue('--pixel').trim(), LCD = css.getPropertyValue('--lcd').trim(), SHADE = css.getPropertyValue('--lcd-shade').trim();
+  const $ = id => document.getElementById(id);
+  const DIRS = { up: [0,-1], down: [0,1], left: [-1,0], right: [1,0] };
+
+  let best = 0;
+  try { best = +localStorage.getItem('pocket-snake-best') || 0; } catch (e) {}
+
+  let snake, dir, queue, food, score, state, timer, speed;
+
+  function reset() {
+    snake = [[9,10],[8,10],[7,10],[6,10]];
+    dir = 'right'; queue = []; score = 0; speed = 140;
+    placeFood(); state = 'ready';
+    clearTimeout(timer); hud(); draw();
+    show('READY?', 'Press an arrow key or tap the pad');
+  }
+  function placeFood() {
+    do { food = [Math.floor(Math.random()*N), Math.floor(Math.random()*N)]; }
+    while (snake.some(([x,y]) => x === food[0] && y === food[1]));
+  }
+  const pad = n => String(n).padStart(4, '0');
+  function hud() { $('score').textContent = 'SCORE ' + pad(score); $('best').textContent = 'HI ' + pad(best); }
+  function show(t, s) { $('ovTitle').textContent = t; $('ovText').textContent = s; $('overlay').hidden = false; }
+
+  function turn(d) {
+    const last = queue.length ? queue[queue.length-1] : dir;
+    const [ax, ay] = DIRS[last], [bx, by] = DIRS[d];
+    if (ax + bx === 0 && ay + by === 0) return;   // no reversing into yourself
+    if (d !== last && queue.length < 3) queue.push(d);
+    if (state === 'ready' || state === 'over') { if (state === 'over') { reset(); queue.push(d); } start(); }
+  }
+  function start() { state = 'run'; $('overlay').hidden = true; tick(); }
+  function togglePause() {
+    if (state === 'run') { state = 'paused'; clearTimeout(timer); show('PAUSED', 'Space or II to resume'); }
+    else if (state === 'paused') start();
+  }
+
+  function tick() {
+    if (queue.length) dir = queue.shift();
+    const [dx, dy] = DIRS[dir];
+    const head = [(snake[0][0]+dx+N)%N, (snake[0][1]+dy+N)%N];   // walls wrap around
+    const eating = head[0] === food[0] && head[1] === food[1];
+    const body = eating ? snake : snake.slice(0, -1);
+    if (body.some(([x,y]) => x === head[0] && y === head[1])) return gameOver();
+    snake.unshift(head);
+    if (eating) {
+      score += 10; speed = Math.max(60, speed - 3); placeFood();
+      if (score > best) { best = score; try { localStorage.setItem('pocket-snake-best', best); } catch (e) {} }
+      hud();
+    } else snake.pop();
+    draw();
+    timer = setTimeout(tick, speed);
+  }
+  function gameOver() {
+    state = 'over'; draw(true);
+    show('GAME OVER', 'Score ' + score + ' · arrow to play again');
+  }
+
+  function cell(x, y, inset) { ctx.fillRect(x*CELL+inset, y*CELL+inset, CELL-inset*2, CELL-inset*2); }
+  function draw(dead) {
+    ctx.fillStyle = LCD; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = SHADE;                     // faint ghost pixels, like a real LCD
+    for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) cell(x, y, 3);
+    ctx.fillStyle = PIXEL;
+    snake.forEach(([x,y], i) => cell(x, y, i === 0 ? 1 : 2));
+    if (!dead) {                               // food: a little cross
+      const [fx, fy] = food, c = CELL/2;
+      ctx.fillRect(fx*CELL+c-2, fy*CELL+4, 4, CELL-8);
+      ctx.fillRect(fx*CELL+4, fy*CELL+c-2, CELL-8, 4);
+    }
+  }
+
+  const KEYS = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right', w:'up', s:'down', a:'left', d:'right', W:'up', S:'down', A:'left', D:'right' };
+  addEventListener('keydown', e => {
+    if (KEYS[e.key]) { e.preventDefault(); turn(KEYS[e.key]); }
+    else if (e.key === ' ') { e.preventDefault(); togglePause(); }
+  });
+  document.querySelectorAll('[data-dir]').forEach(b => b.addEventListener('click', () => turn(b.dataset.dir)));
+  $('pauseBtn').addEventListener('click', togglePause);
+  $('restart').addEventListener('click', () => { reset(); });
+
+  let sx, sy;
+  const stage = document.querySelector('.stage');
+  stage.addEventListener('touchstart', e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+  stage.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  stage.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+    turn(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+  });
+
+  reset();
+})();
+</script>
+</body>
+</html>
